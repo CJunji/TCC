@@ -10,80 +10,94 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from tkinter import *
 from tkinter.ttk import *
 import xlsxwriter
+import sys
 
 arduino = 0
 conexao = False
-reading = False
-sending = False
 tempo = 0
 
 peltier1_st = 0
 peltier2_st = 0
-data_obtained = [[0,0,0,0,0,0,0,0,0,0]]
+default_data = [[0,0,0,0,0,0,0,0,0,0]]
 
-planilha = pd.DataFrame(data_obtained, columns=['Tempo', 'Estado', 'Tf',
+planilha = pd.DataFrame(default_data, columns=['Tempo', 'Estado', 'Tf',
                                                 'Tq', u'\u0394' + 'T','V', 'I', 'R', 'P', 'S'])
-
 fig = plt.plot(planilha.get('Tempo'), planilha.get('V'))
 
 port_available = []
 for port in serial.tools.list_ports.comports():
     port_available.append(port.name)
 
-port_use =port_available[0]
-
 baud = 115200
 
 def arduino_conect():
-    print("Conect")
-#    global conexao, reading, sending, arduino
-#    if(conexao == False):
-#port_use = port_connect.get()
-arduino = serial.Serial(port_use, baud, timeout=0)
-conexao = True
-reading = True
-sending = True
+    global conexao, arduino, planilha, tempo
+    
+    if(conexao == False):
+        tempo = 0
+        planilha = planilha.iloc[0]
 
-time.sleep(1)
-arduino.reset_input_buffer()
-arduino.reset_output_buffer()
-arduino.close()
-time.sleep(1)
-arduino.open()
-time.sleep(1)
-arduino.reset_input_buffer()
-arduino.reset_output_buffer()
-#connect_bt.configure(text="Desconectar")
-#    elif(conexao == True):
-#        arduino.close()
-#        connect_bt.configure(text="Conectar")
+        port_use = port_connect.get()
 
+        arduino = serial.Serial(port_use, baud, timeout=0)
+        time.sleep(2)
+        #arduino.close()
+        #time.sleep(0.5)
+        #arduino.open()
+        #time.sleep(0.5)
+        arduino.reset_input_buffer()
+        arduino.reset_output_buffer()
+        connect_bt.configure(text = "Desconectar")
+        ard_signal.configure(fg_color = 'green')
+
+        conexao = True
+        sendArduino("connect")
+        if(t1.is_alive() == False):
+            t1.start()
+
+    else:
+        conexao = False
+        sendArduino("10 50 5 0")
+        time.sleep(2)
+        sendArduino("desconnect")
+        time.sleep(2)
+        arduino.reset_input_buffer()
+        arduino.reset_output_buffer()
+        time.sleep(2)
+        arduino.close()
+        connect_bt.configure(text = "Conectar")
+        ard_signal.configure(fg_color = 'red')
+        arduino = 0
 
 def encerramento():
-    global reading
-    reading = False
-    arduino.reset_input_buffer()
-    arduino.reset_output_buffer()
-    arduino.close()
+    global conexao, arduino
+
+    if(conexao == True):
+        arduino_conect()
+    
     time.sleep(0.2)
     screen.destroy()
     screen.quit()
+    sys.exit()
 
 def readArduino():
-    while reading:
-        data = arduino.readline()
-        time.sleep(0.5)
-        arduino.reset_output_buffer()   
-        data_sensor = data.decode('utf-8')
-        if(data_sensor != ''):
-            print(data_sensor)
-            refresh_data(data_sensor)
+    global conexao, arduino
+    while True:
+        if conexao:
+            data = arduino.readline()
+            time.sleep(0.3)
+            arduino.reset_output_buffer()   
+            data_sensor = data.decode('utf-8')
+            if(data_sensor != ''):
+                print(data_sensor)
+                refresh_data(data_sensor)
+        else:
+            pass
 
 def sendArduino(data_send):
-    global reading, changing
-    reading = False
+    print(data_send)
     arduino.write(data_send.encode('utf-8'))
-    time.sleep(0.5)
+    time.sleep(0.3)
     arduino.reset_input_buffer()
     arduino.reset_input_buffer()
     time.sleep(0.3)
@@ -264,12 +278,12 @@ tabview.place(relx=0.5, rely=0.5, anchor=tkinter.CENTER)
 tensao_tabview = tabview.add("Tensão(mV)")
 corrente_tabview = tabview.add("Corrente(mA)")
 resistencia_tabview = tabview.add("Resistência(ohms)")
-seebeck_tabview = tabview.add("Seebeck(V/K)")
+seebeck_tabview = tabview.add("Seebeck(mV/K)")
 
 tabview.tab("Tensão(mV)").grid_columnconfigure(0,weight=1)
 tabview.tab("Corrente(mA)").grid_columnconfigure(0,weight=1)
 tabview.tab("Resistência(ohms)").grid_columnconfigure(0,weight=1)
-tabview.tab("Seebeck(V/K)").grid_columnconfigure(0,weight=1)
+tabview.tab("Seebeck(mV/K)").grid_columnconfigure(0,weight=1)
 
 peltier1 = ctm.CTkEntry(master=peltier1_frame, width=50, placeholder_text="10")
 peltier1.place(relx=0.5, rely=0.5, anchor=tkinter.CENTER)
@@ -397,7 +411,7 @@ monitor_peltier2 = ctm.CTkLabel(master=feedback_frame,
 monitor_peltier2.place(relx=0.5, rely=0.3, anchor=tkinter.CENTER)
 
 monitor_comunication = ctm.CTkLabel(master=feedback_frame,
-                                text="Referência",
+                                text="Comunicação",
                                 text_color="BLACK")
 monitor_comunication.place(relx=0.80, rely=0.3, anchor=tkinter.CENTER)
 
@@ -415,22 +429,26 @@ peltier2_sinal = ctm.CTkFrame(master=feedback_frame,
                               fg_color="red")
 peltier2_sinal.place(relx=0.5, rely=0.65, anchor=tkinter.CENTER)
 
-reference_sinal = ctm.CTkFrame(master=feedback_frame,
+ard_signal = ctm.CTkFrame(master=feedback_frame,
                               width=50,
                               height=50,
                               corner_radius=90,
                               fg_color="red")
-reference_sinal.place(relx=0.80, rely=0.65, anchor=tkinter.CENTER)
+ard_signal.place(relx=0.80, rely=0.65, anchor=tkinter.CENTER)
 
 
 def refresh_data(data_sensor):
     global planilha, tempo
-    data_splited = data_sensor.split(" ")
     resistencia = 0.0
     seebeck = 0.0
     potencia = 0.0
 
+    data_splited = data_sensor.split(" ")
     tempo += 1
+    
+    if (len(data_splited) != 5):
+        return
+
     stRun = float(data_splited[0])
     temperatura1 = float(data_splited[1])
     temperatura2 = float(data_splited[2])
@@ -445,8 +463,7 @@ def refresh_data(data_sensor):
     potencia = tensao * corrente
 
     if(float(corrente) != 0):
-        resistencia = tensao / corrente
-        resistencia = resistencia - 0.8
+        resistencia = (tensao / corrente) - 0.4
 
     if(float(difTemp) != 0):
         seebeck = (tensao / difTemp)
@@ -454,24 +471,18 @@ def refresh_data(data_sensor):
     if(stRun == 1):
         peltier1_sinal.configure(fg_color="green")
         peltier2_sinal.configure(fg_color="green")
-        reference_sinal.configure(fg_color="green")
     elif(stRun == 2):
         peltier1_sinal.configure(fg_color="green")
         peltier2_sinal.configure(fg_color="green")
-        reference_sinal.configure(fg_color="green")
     elif(stRun == 3):
         peltier1_sinal.configure(fg_color="green")
         peltier2_sinal.configure(fg_color="red")
-        reference_sinal.configure(fg_color="green")
     elif(stRun == 4):
         peltier1_sinal.configure(fg_color="red")
         peltier2_sinal.configure(fg_color="green")
-        reference_sinal.configure(fg_color="green")
     elif(stRun == 5):
         peltier1_sinal.configure(fg_color="red")
         peltier2_sinal.configure(fg_color="red")
-        reference_sinal.configure(fg_color="green")
-
 
     temperatura1_label.configure(text="Tf: " + '%.2f' % temperatura1 + " ºC")
     temperatura2_label.configure(text="Tq: " + '%.2f' % temperatura2 + " ºC")
@@ -499,20 +510,28 @@ def refresh_data(data_sensor):
     resistencia_plot()
     seebeck_plot()
 
-fig_voltage, ax1 = plt.subplots()
+fig_voltage = plt.figure()
 
 def voltage_plot():
+    fig_voltage.clear()
+    ax1 = fig_voltage.add_subplot(111)
     ax1.clear()
-    ax1.set(xlabel='Tempo(s)', ylabel='Tensão (mV)')
-    # x1_data = planilha.tail(60).get('Tempo')
-    # y1_data = planilha.tail(60).get('V')
     x1_data = planilha.get('Tempo')
     y1_data = planilha.get('V')
     ax1.plot(x1_data, y1_data)
+    ax1.set_ylabel('Tensão (mV)')
+
+    ax5 = ax1.twinx()
+    y5_data = planilha.get(u'\u0394' + 'T')
+    ax5.plot(x1_data, y5_data, 'r-')
+    ax5.set_ylabel(u'\u0394' + 'T (ºC)', color = 'r')
+    for tl in ax5.get_yticklabels():
+        tl.set_color('r')
+    
     voltage_slide.draw()
 
 voltage_slide = FigureCanvasTkAgg(fig_voltage, master=tensao_tabview)
-voltage_slide.get_tk_widget().pack(fill='both', padx=(60,10))
+voltage_slide.get_tk_widget().pack(fill='both', padx=(75,85))
 
 fig_corrente, ax2 = plt.subplots()
 
@@ -520,8 +539,6 @@ def corrente_plot():
     ax2.clear()
 
     ax2.set(xlabel='Tempo(s)', ylabel='Corrente (mA)')
-    # x2_data = planilha.tail(60).get('Tempo')
-    # y2_data = planilha.tail(60).get('I')
     x2_data = planilha.get('Tempo')
     y2_data = planilha.get('I')
 
@@ -537,8 +554,6 @@ def resistencia_plot():
     ax3.clear()
 
     ax3.set(xlabel='Tempo(s)', ylabel='Resistência (' + u'\u03a9' + ')')
-    # x3_data = planilha.tail(60).get('Tempo')
-    # y3_data = planilha.tail(60).get('R')
     x3_data = planilha.get('Tempo')
     y3_data = planilha.get('R')
 
@@ -553,9 +568,7 @@ fig_seebeck, ax4 = plt.subplots()
 def seebeck_plot():
     ax4.clear()
 
-    ax4.set(xlabel='Tempo(s)', ylabel='Coeficiente de Seebeck (V/K)')
-    # x4_data = planilha.tail(60).get('Tempo')
-    # y4_data = planilha.tail(60).get('S')
+    ax4.set(xlabel='Tempo(s)', ylabel='Coeficiente de Seebeck (mV/K)')
     x4_data = planilha.get('Tempo')
     y4_data = planilha.get('S')
 
@@ -566,8 +579,6 @@ seebeck_slide = FigureCanvasTkAgg(fig_seebeck, master=seebeck_tabview)
 seebeck_slide.get_tk_widget().pack(fill='both', padx=(40,10))
 
 t1 = threading.Thread(target=readArduino)
-
-t1.start()
 
 screen.protocol("WM_DELETE_WINDOW", encerramento)
 screen.mainloop()
